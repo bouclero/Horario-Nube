@@ -1,15 +1,15 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // ---
-    //  CONFIGURACIÓN DE FIREBASE ---
+    // --- CONFIGURACIÓN DE FIREBASE ---
     const firebaseConfig = {
       apiKey: "AIzaSyAzyTU0ctWWPpKT2BdV908cpvnBD6L6KX0",
       authDomain: "horario-635ba.firebaseapp.com",
-      databaseURL: "https://horario-635ba.firebaseio.com",
-      projectId: "horario-635ba",
-      storageBucket: "horario-635ba.appspot.com",
-      messagingSenderId: "681160039040",
-      appId: "1:681160039040:web:c13dbb9c11281d32d56465"
-    };
+  databaseURL: "https://horario-635ba-default-rtdb.europe-west1.firebasedatabase.app",
+   // ✅ CORRECTA
+  projectId: "horario-635ba",
+  storageBucket: "horario-635ba.appspot.com",
+  messagingSenderId: "681160039040",
+  appId: "1:681160039040:web:c13dbb9c11281d32d56465"
+};
 
     // Inicializar Firebase
     firebase.initializeApp(firebaseConfig);
@@ -32,11 +32,10 @@ document.addEventListener('DOMContentLoaded', () => {
         initSignaturePads();
         setupEventListeners();
         setupThemeToggle();
-        setupFirebaseListener(); // Escuchamos cambios en Firebase desde el inicio
+        setupFirebaseListener(); // Conecta y escucha a Firebase.
         const now = new Date();
         document.getElementById('month-select').value = now.getMonth();
         document.getElementById('year-select').value = now.getFullYear();
-        generateSchedule();
     }
 
     function initSignaturePads() {
@@ -47,7 +46,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function setupEventListeners() {
-        // Se eliminan los listeners de P2P
         document.getElementById('connect-btn').addEventListener('click', handleConnection);
         document.getElementById('add-worker-btn').addEventListener('click', addWorker);
         document.getElementById('save-data-btn').addEventListener('click', saveData);
@@ -91,22 +89,19 @@ document.addEventListener('DOMContentLoaded', () => {
         applyTheme(localStorage.getItem('theme') || 'light');
     }
 
-    // --- GESTIÓN DE CONTROLES P2P (AHORA INFORMATIVOS) ---
     function handleConnection() {
-        // Cambia el texto del panel P2P para reflejar el estado de Firebase
-        const p2pCardTitle = document.querySelector('.p2p-section .card-title');
-        if (p2pCardTitle) p2pCardTitle.innerHTML = '<i class="fas fa-cloud"></i> Conexión a la Nube';
-        const p2pInfoBadge = document.querySelector('.p2p-section .info-badge');
-        if (p2pInfoBadge) p2pInfoBadge.innerHTML = '<i class="fas fa-info-circle"></i> Sincronizado con Firebase';
         showNotification('Esta versión está conectada a la nube de Firebase.', 'info');
     }
 
-    // --- SINCRONIZACIÓN CON FIREBASE ---
+    /**
+     * Se activa al principio y cada vez que hay un cambio en la nube.
+     * Es la ÚNICA función que modifica el estado local (state) y redibuja la pantalla.
+     */
     function setupFirebaseListener() {
-        const connectedRef = database.ref(".info/connected");
         const statusElement = document.getElementById('connection-status');
-
-        connectedRef.on("value", (snap) => {
+        
+        // Listener para el estado de la conexión
+        database.ref(".info/connected").on("value", (snap) => {
           if (snap.val() === true) {
             statusElement.innerHTML = `<i class="fas fa-check-circle"></i> Conectado a Firebase`;
             statusElement.className = `status-indicator status-online`;
@@ -116,67 +111,82 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         });
 
+        // Listener para los datos
         scheduleRef.on('value', (snapshot) => {
             const data = snapshot.val();
+            console.log("Datos cargados desde Firebase:", data);
             if (data) {
                 state.workers = data.workers || [];
                 state.scheduleData = data.schedule || {};
-                generateSchedule();
-                showNotification('Datos sincronizados desde la nube.', 'success');
             } else {
-                // Si no hay datos en Firebase, nos aseguramos que el estado local esté limpio
                 state.workers = [];
                 state.scheduleData = {};
-                generateSchedule();
             }
+            generateSchedule(); // Redibuja la tabla con los datos frescos
+        }, (error) => {
+            console.error("Error de lectura de Firebase:", error);
+            showNotification("Error al leer datos de la nube.", "error");
         });
     }
 
-    // --- GESTIÓN DE DATOS (CRUD con Firebase) ---
+    /**
+     * Función central para guardar el estado completo en Firebase.
+     * Todas las demás funciones de escritura deben llamar a esta.
+     */
+    function saveData() {
+        const dataToSave = { workers: state.workers, schedule: state.scheduleData || {} };
+        scheduleRef.set(dataToSave)
+            .then(() => {
+                showNotification('Datos guardados en la nube.', 'success');
+            })
+            .catch((error) => {
+                console.error("Error al guardar datos:", error);
+                showNotification(`Error al guardar: ${error.message}`, 'error');
+            });
+    }
+
+    // --- GESTIÓN DE DATOS (CRUD) ---
     function addWorker() {
         const workerNameInput = document.getElementById('worker-name');
         const workerName = workerNameInput.value.trim();
         if (!workerName) return showNotification('Ingresa un nombre de trabajador', 'error');
         if (state.workers.includes(workerName)) return showNotification('El trabajador ya existe', 'error');
         
-        // Se actualiza el estado completo para asegurar la sincronización
-        const updatedState = {
-            workers: [...state.workers, workerName],
-            schedule: state.scheduleData // Mantenemos los horarios existentes
-        };
-        scheduleRef.set(updatedState);
-        showNotification(`Trabajador añadido: ${workerName}`, 'success');
+        // 1. Modificar estado local
+        state.workers.push(workerName);
+        
+        // 2. Actualizar UI local para respuesta instantánea
+        generateSchedule();
         workerNameInput.value = '';
+
+        // 3. Sincronizar el nuevo estado completo con la nube
+        saveData();
     }
 
     function deleteWorker(workerToDelete) {
         if (confirm(`¿Estás seguro de que quieres eliminar a ${workerToDelete}? Se borrarán todos sus registros.`)) {
-            const newWorkers = state.workers.filter(w => w !== workerToDelete);
-            const newScheduleData = { ...state.scheduleData };
-            delete newScheduleData[workerToDelete];
+            // 1. Modificar estado local
+            state.workers = state.workers.filter(w => w !== workerToDelete);
+            delete state.scheduleData[workerToDelete];
             
-            scheduleRef.set({ workers: newWorkers, schedule: newScheduleData });
-            showNotification(`Trabajador ${workerToDelete} eliminado.`, 'success');
+            // 2. Actualizar UI local
+            generateSchedule();
+
+            // 3. Sincronizar con la nube
+            saveData();
         }
     }
 
     function resetAllData() {
         if (confirm('¿Estás seguro que deseas borrar TODOS los datos de la nube? Esta acción no se puede deshacer.')) {
-            scheduleRef.remove();
-            document.getElementById('report-results').style.display = 'none';
-            document.getElementById('worker-name').value = '';
-            showNotification('Todos los datos han sido borrados de la nube.', 'success');
-        }
-    }
-
-    function saveData() {
-        // Esta función ahora fuerza una sobreescritura del estado completo en Firebase
-        try {
-            const dataToSave = { workers: state.workers, schedule: state.scheduleData || {} };
-            scheduleRef.set(dataToSave);
-            showNotification('Datos guardados en la nube.', 'success');
-        } catch (e) {
-            showNotification(`Error al guardar: ${e.message}`, 'error');
+            // Borra los datos en Firebase. El listener se encargará de actualizar el estado y la UI.
+            scheduleRef.remove()
+                .then(() => {
+                    showNotification('Todos los datos han sido borrados de la nube.', 'success');
+                })
+                .catch((error) => {
+                    showNotification(`Error al borrar: ${error.message}`, 'error');
+                });
         }
     }
 
@@ -184,17 +194,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const file = event.target.files[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = e => {
+        reader.onload = (e) => {
             try {
                 if (!file.name.endsWith('.json')) throw new Error('Formato de archivo no soportado');
                 const data = JSON.parse(e.target.result);
-                if (!data.workers || !data.schedule) throw new Error('El archivo JSON no tiene el formato correcto.');
+                if (data.workers === undefined || data.schedule === undefined) throw new Error('El archivo JSON no tiene el formato correcto.');
                 
-                // Al importar, sobreescribimos los datos en Firebase
-                scheduleRef.set(data);
-                showNotification('Datos importados y subidos a la nube correctamente', 'success');
+                // Al importar, sobreescribimos los datos en Firebase. El listener actualizará la UI.
+                scheduleRef.set(data)
+                    .then(() => {
+                        showNotification('Datos importados y subidos a la nube correctamente', 'success');
+                    })
+                    .catch((error) => {
+                        showNotification(`Error al importar: ${error.message}`, 'error');
+                    });
             } catch (error) {
-                showNotification(`Error al importar: ${error.message}`, 'error');
+                showNotification(`Error al leer el archivo: ${error.message}`, 'error');
             }
         };
         reader.readAsText(file);
@@ -266,8 +281,16 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function updateScheduleCell(worker, dateStr) {
+        const dayIndex = parseInt(dateStr.split('/')[0]);
+        const row = document.querySelector(`.worker-row[data-worker-name="${worker}"]`);
+        if (!row) return;
+        const cell = row.cells[dayIndex];
+        if (!cell) return;
+        updateScheduleCellContent(cell, worker, dateStr);
+    }
+
     function updateScheduleCellContent(cell, worker, dateStr) {
-        // IMPORTANTE: Firebase no permite '/' en las claves. Asumimos que se guardan con '-'.
         const safeDateStr = dateStr.replace(/\//g, '-');
         const entry = state.scheduleData[worker]?.[safeDateStr] || {};
         
@@ -290,11 +313,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- MODAL DE REGISTRO DE TIEMPO ---
     function openTimeModal(worker, dateStr) {
         state.currentWorker = worker;
-        state.currentDate = dateStr; // Usamos el formato con '/' localmente
+        state.currentDate = dateStr;
         
         const safeDateStr = dateStr.replace(/\//g, '-');
-        if (!state.scheduleData[worker]) state.scheduleData[worker] = {};
-        const entry = state.scheduleData[worker][safeDateStr] || {};
+        const entry = state.scheduleData[worker]?.[safeDateStr] || {};
 
         if (entry.isDayOff) {
             document.getElementById('day-off-view').style.display = 'block';
@@ -316,43 +338,63 @@ document.addEventListener('DOMContentLoaded', () => {
     function saveTime() {
         const entryTime = document.getElementById('entry-time').value;
         const exitTime = document.getElementById('exit-time').value;
-        
-        if (!entryTime || !exitTime) {
-            return showNotification('Debe especificar hora de entrada y salida.', 'error');
-        }
+        if (!entryTime || !exitTime) return showNotification('Debe especificar hora de entrada y salida.', 'error');
 
         const incidents = document.getElementById('modal-incidents').value.trim();
         const signatureData = state.modalSignaturePad.isEmpty() ? null : state.modalSignaturePad.toDataURL();
         
-        const record = { 
-            entryTime, 
-            exitTime,
-            signature: signatureData,
-            incidents,
-            isDayOff: false
-        };
-
+        const record = { entryTime, exitTime, signature: signatureData, incidents, isDayOff: false };
         const safeDateStr = state.currentDate.replace(/\//g, '-');
-        database.ref(`scheduleApp/schedule/${state.currentWorker}/${safeDateStr}`).set(record);
-        showNotification('Registro guardado en la nube.', 'success');
+
+        // 1. Modificar estado local
+        if (!state.scheduleData[state.currentWorker]) {
+            state.scheduleData[state.currentWorker] = {};
+        }
+        state.scheduleData[state.currentWorker][safeDateStr] = record;
+
+        // 2. Actualizar UI local
+        updateScheduleCell(state.currentWorker, state.currentDate);
         closeModal();
+
+        // 3. Sincronizar con la nube
+        saveData();
     }
 
     function markDayAsOff() {
         const safeDateStr = state.currentDate.replace(/\//g, '-');
-        database.ref(`scheduleApp/schedule/${state.currentWorker}/${safeDateStr}`).set({ isDayOff: true });
-        showNotification('Día marcado como descanso.', 'success');
+        const record = { isDayOff: true };
+
+        // 1. Modificar estado local
+        if (!state.scheduleData[state.currentWorker]) {
+            state.scheduleData[state.currentWorker] = {};
+        }
+        state.scheduleData[state.currentWorker][safeDateStr] = record;
+
+        // 2. Actualizar UI local
+        updateScheduleCell(state.currentWorker, state.currentDate);
         closeModal();
+
+        // 3. Sincronizar con la nube
+        saveData();
     }
 
     function unmarkDayAsOff() {
         const safeDateStr = state.currentDate.replace(/\//g, '-');
-        database.ref(`scheduleApp/schedule/${state.currentWorker}/${safeDateStr}`).remove();
-        showNotification('Se ha quitado la marca de descanso.', 'success');
+
+        // 1. Modificar estado local
+        if (state.scheduleData[state.currentWorker]) {
+            delete state.scheduleData[state.currentWorker][safeDateStr];
+        }
+
+        // 2. Actualizar UI local
+        updateScheduleCell(state.currentWorker, state.currentDate);
         closeModal();
+
+        // 3. Sincronizar con la nube
+        saveData();
     }
 
-    // --- INFORMES Y EXPORTACIÓN (Con ajuste para fechas) ---
+    // --- INFORMES Y UTILIDADES ---
     function generateMonthlyReport() {
         const month = parseInt(document.getElementById('month-select').value);
         const year = parseInt(document.getElementById('year-select').value);
@@ -364,9 +406,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const workerSchedule = state.scheduleData[worker] || {};
             
             for (const safeDateStr in workerSchedule) {
-                // Convertimos la fecha 'D-M-YYYY' de Firebase a partes para comparar
                 const dateParts = safeDateStr.split('-');
-                const entryDay = parseInt(dateParts[0]);
                 const entryMonth = parseInt(dateParts[1]) - 1;
                 const entryYear = parseInt(dateParts[2]);
 
@@ -448,7 +488,6 @@ document.addEventListener('DOMContentLoaded', () => {
         showNotification('Datos exportados en formato JSON', 'success');
     }
 
-    // --- UTILIDADES (Sin cambios) ---
     function closeModal() {
         document.getElementById('time-modal').style.display = 'none';
     }
