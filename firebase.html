@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control Horario bajo Licencia de JJRAMIREZ</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-calendar-alt"></i> Control Horario bajo Licencia de JJRAMIREZ</h1>
+            <button id="theme-toggle" title="Cambiar tema">
+                <i class="fas fa-moon"></i>
+            </button>
+            <p class="subtitle">Gestión de horarios con sincronización en tiempo real - Sin backend ni base de datos</p>
+        </header>
+        
+        <div class="connection-panel">
+            <div class="p2p-section card">
+                <h2 class="card-title"><i class="fas fa-wifi"></i> Conexión P2P</h2>
+                <div class="input-group">
+                    <label for="peer-action">Acción:</label>
+                    <select id="peer-action">
+                        <option value="host">Crear sala (Host)</option>
+                        <option value="client">Unirse a sala (Cliente)</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="peer-id">ID de Sala:</label>
+                    <input type="text" id="peer-id" placeholder="ID generado automáticamente...">
+                </div>
+                <button id="connect-btn" class="secondary">
+                    <i class="fas fa-plug"></i> Conectar
+                </button>
+                <div id="connection-status" class="status-indicator status-offline">
+                    <i class="fas fa-times-circle"></i> Desconectado
+                </div>
+                <div class="info-badge">
+                    <i class="fas fa-info-circle"></i> Usando WebRTC para comunicación P2P
+                </div>
+            </div>
+            
+            <div class="data-section card">
+                <h2 class="card-title"><i class="fas fa-database"></i> Gestión de Datos</h2>
+                <div class="input-group">
+                    <label for="worker-name">Nombre del Trabajador:</label>
+                    <input type="text" id="worker-name" placeholder="Ej: Juan Pérez">
+                </div>
+                <div class="buttons-group">
+                    <button id="add-worker-btn" class="secondary">
+                        <i class="fas fa-user-plus"></i> Añadir
+                    </button>
+                    <button id="save-data-btn">
+                        <i class="fas fa-save"></i> Guardar
+                    </button>
+                </div>
+                <div class="buttons-group" style="margin-top: 15px;">
+                    <button id="export-txt-btn" class="secondary">
+                        <i class="fas fa-file-alt"></i> Exp. Informe (TXT)
+                    </button>
+                    <button id="export-json-btn" class="secondary">
+                        <i class="fas fa-file-export"></i> Exp. Datos (JSON)
+                    </button>
+                    <button id="import-btn">
+                        <i class="fas fa-file-import"></i> Importar Datos
+                    </button>
+                    <button id="reset-data-btn" class="danger">
+                        <i class="fas fa-trash-alt"></i> Borrar Todo
+                    </button>
+                    <input type="file" id="import-file" accept=".json" style="display: none;">
+                </div>
+                <div class="info-badge">
+                    <i class="fas fa-info-circle"></i> Datos guardados localmente
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2 class="card-title"><i class="fas fa-calendar-day"></i> Horario Mensual</h2>
+            <div class="month-selector">
+                <div class="input-group" style="flex: 1;">
+                    <label for="month-select">Mes:</label>
+                    <select id="month-select">
+                        <option value="0">Enero</option><option value="1">Febrero</option><option value="2">Marzo</option><option value="3">Abril</option><option value="4">Mayo</option><option value="5">Junio</option><option value="6">Julio</option><option value="7">Agosto</option><option value="8">Septiembre</option><option value="9">Octubre</option><option value="10">Noviembre</option><option value="11">Diciembre</option>
+                    </select>
+                </div>
+                <div class="input-group" style="flex: 1;">
+                    <label for="year-select">Año:</label>
+                    <input type="number" id="year-select" min="2024" max="2030" value="2025">
+                </div>
+                <div class="input-group" style="flex: 1;">
+                    <label>&nbsp;</label>
+                    <button id="generate-btn" class="secondary">
+                        <i class="fas fa-sync-alt"></i> Generar
+                    </button>
+                </div>
+            </div>
+            <div class="schedule-container">
+                <table id="schedule-table">
+                    <thead>
+                        <tr>
+                            <th>Trabajador</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2 class="card-title"><i class="fas fa-chart-bar"></i> Informe Mensual</h2>
+            <div class="report-section">
+                <button id="generate-report-btn" class="secondary">
+                    <i class="fas fa-calculator"></i> Calcular Horas Trabajadas
+                </button>
+                <div id="report-results" style="margin-top: 20px; display: none;">
+                    <h3>Resumen de Horas por Trabajador</h3>
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>Trabajador</th><th>Total Horas</th><th>Total Minutos</th><th>Formato HH:MM</th>
+                            </tr>
+                        </thead>
+                        <tbody id="report-table-body">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            <p>Aplicación Web P2P - Funciona sin backend ni base de datos | WebRTC + PeerJS</p>
+            <p class="info-badge">Los datos se almacenan localmente y se sincronizan mediante comunicación punto a punto</p>
+        </footer>
+    </div>
+    
+    <div id="time-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Editar Registro</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <!-- VISTA PARA DÍA DE DESCANSO -->
+                <div id="day-off-view" style="display: none; text-align: center;">
+                    <p style="font-size: 1.2rem; margin-bottom: 20px;">Este día está marcado como descanso.</p>
+                    <button id="unmark-day-off-btn" class="danger"><i class="fas fa-times"></i> Quitar marca de Descanso</button>
+                </div>
+                
+                <!-- VISTA NORMAL DE EDICIÓN -->
+                <div id="edit-view">
+                    <div class="input-group">
+                        <label>Entrada:</label>
+                        <div class="time-input"><input type="time" id="entry-time"><button id="set-entry-now" class="secondary">Ahora</button></div>
+                    </div>
+                    <div class="input-group">
+                        <label>Salida:</label>
+                        <div class="time-input"><input type="time" id="exit-time"><button id="set-exit-now" class="secondary">Ahora</button></div>
+                    </div>
+                    <div class="input-group">
+                         <label>Firma del trabajador:</label>
+                         <canvas id="modal-signature-pad" class="signature-pad" width="438" height="150"></canvas>
+                         <button id="modal-clear-signature" class="danger" style="width: auto; padding: 8px 15px; margin-top: -5px;">
+                            <i class="fas fa-eraser"></i> Limpiar Firma
+                         </button>
+                    </div>
+                    <div class="input-group">
+                        <label for="modal-incidents">Incidencias:</label>
+                        <textarea id="modal-incidents" rows="3"></textarea>
+                    </div>
+                    <div class="buttons-group">
+                        <button id="save-time-btn" class="secondary"><i class="fas fa-save"></i> Guardar Registro</button>
+                        <button id="mark-day-off-btn" class="info"><i class="fas fa-bed"></i> Marcar Descanso</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="notification" class="notification"></div>
+    
+    <!-- SDK de Firebase (versión compat para una migración más sencilla) -->
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-database-compat.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script src="firebase.js" defer></script>
+</body>
+</html>
